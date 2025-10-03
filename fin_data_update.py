@@ -17,12 +17,7 @@ python fin_data_update.py --db $env:DB
 """
 
 
-# for debugging yf_update:
-#fname = os.path.join(data_db_root, mainrtns)
-#latest_tickers = sp_tickers
-
-
-# Plopped this here...don't remember if I used it or not (rather than just getting the file by hand)
+# Add in the future?
 # Define the URL of the data source
 # url = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/F-F_Research_Data_5_Factors_2x3_CSV.zip"
 # # Download the zip file and extract the csv file
@@ -149,7 +144,6 @@ def main(argv=None):
     )
     sp_tickers = sp_df.index.tolist()
     fdatin = yf_update(os.path.join(data_db_root, mainrtns), sp_tickers, True) 
-    # WORKS! 1: SP500 lifetime tickers returns updated
 
     # Lets add in sector and industry
     print("Getting sector and industry info from Yahoo Finance...this may take a while...")
@@ -191,13 +185,12 @@ def main(argv=None):
         sp500_dict[today_date] = spdf2
     with open(os.path.join(data_db_root, "sp500_history")+".pickle","wb") as f:
         pickle.dump(sp500_dict,f)
-    # WORKS! 2: SP500 daily sectors, tickers, weights updated
+
 
     factorinfo = pd.read_excel(os.path.join(data_db_root, "spdr_data.xlsx"), skiprows=1)
     factorinfo = factorinfo.dropna(subset=['Ticker'])
     factor_tickers = factorinfo['Ticker'].tolist()
     fsdatin = yf_update(os.path.join(data_db_root, spdrdatfile), factor_tickers,True)
-    # WORKS! 3: SPDR factor returns updated
 
 
 if __name__ == '__main__':
