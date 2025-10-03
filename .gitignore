@@ -1,0 +1,15 @@
+# Ignore Microsoft Access DB files and lock files
+*.accdb
+*.laccdb
+
+# Local environment/settings
+.env
+.venv/
+
+# Local output
+
+
+# OS/editor noise
+.DS_Store
+__pycache__/
+*.pyc

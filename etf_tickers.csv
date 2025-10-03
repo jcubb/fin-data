@@ -1,0 +1,55 @@
+﻿Name,Ticker,Info
+SPDR S&P Aerospace & Defense ETF,XAR,industry
+SPDR S&P Bank ETF,KBE,industry
+SPDR S&P Biotech ETF,XBI,industry
+SPDR S&P Capital Markets ETF,KCE,industry
+SPDR S&P Health Care Equipment ETF,XHE,industry
+SPDR S&P Health Care Services ETF,XHS,industry
+SPDR S&P Homebuilders ETF,XHB,industry
+SPDR S&P Insurance ETF,KIE,industry
+SPDR S&P Internet ETF,XWEB,industry
+SPDR S&P Metals & Mining ETF,XME,industry
+SPDR S&P Oil & Gas Equipment & Service,XES,industry
+SPDR S&P Oil & Gas Exploration & Produ,XOP,industry
+SPDR S&P Pharmaceuticals ETF,XPH,industry
+SPDR S&P Regional Banking ETF,KRE,industry
+SPDR S&P Retail ETF,XRT,industry
+SPDR S&P Semiconductor ETF,XSD,industry
+SPDR S&P Software & Services ETF,XSW,industry
+SPDR S&P Telecom ETF,XTL,industry
+SPDR S&P Transportation ETF,XTN,industry
+SPDR SSG US Sector Rotation ETF,XLSR,industry
+The Communication Services Select Sector SPDR Fund,XLC,sector
+The Consumer Discretionary Select Sector SPDR Fund,XLY,sector
+The Consumer Staples Select Sector SPDR Fund,XLP,sector
+The Energy Select Sector SPDR Fund,XLE,sector
+The Financial Select Sector SPDR Fund,XLF,sector
+The Health Care Select Sector SPDR Fund,XLV,sector
+The Industrial Select Sector SPDR Fund,XLI,sector
+The Materials Select Sector SPDR Fund,XLB,sector
+The Real Estate Select Sector SPDR Fund,XLRE,sector
+The Technology Select Sector SPDR Fund,XLK,sector
+The Utilities Select Sector SPDR Fund,XLU,sector
+Invesco Total Return Bond ETF,GTO,bond
+Invesco AAA CLO Floating Rate Note ETF,ICLO,bond
+Invesco Equal Weight 0-30 Year Treasury ETF,GOVI,bond
+ Invesco Ultra Short Duration ETF,GSY,bond
+Invesco Variable Rate Investment Grade ETF,VRIG,bond
+Invesco Taxable Municipal Bond ETF,BAB,bond
+Invesco Preferred ETF,PGX,bond
+Invesco National AMT-Free Municipal Bond ETF,PZA,bond
+Fidelity Dividend ETF for Rising Rates,FDRR,style
+Fidelity Emerging Markets Multifactor ETF,FDEM,style
+Fidelity High Dividend ETF,FDVV,style
+Fidelity High Yield Factor ETF,FDHY,style
+Fidelity International High Dividend ETF,FIDI,style
+Fidelity International Multifactor ETF,FDEV,style
+Fidelity International Value Factor ETF,FIVA,style
+Fidelity Low Duration Bond Factor ETF,FLDR,style
+Fidelity Low Volatility Factor ETF,FDLO,style
+Fidelity Momentum Factor ETF,FDMO,style
+Fidelity Quality Factor ETF,FQAL,style
+Fidelity Small-Mid Multifactor ETF,FSMD,style
+Fidelity Stocks for Inflation ETF,FCPI,style
+Fidelity US Multifactor ETF,FLRG,style
+Fidelity Value Factor ETF,FVAL,style
