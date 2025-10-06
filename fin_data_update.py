@@ -178,6 +178,7 @@ def main(argv=None):
         columns=['Ticker', 'Sector', 'Industry']
     ).set_index('Ticker')
     spsect = pd.concat([spsect, spsect_update], axis=0).sort_index()
+    spsect = yf_sector_clean(spsect)
     with open(os.path.join(data_db_root, "spsect")+".pickle","wb") as f:
         pickle.dump(spsect,f)
 
