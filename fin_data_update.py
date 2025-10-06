@@ -18,12 +18,11 @@ python fin_data_update.py --db $env:DB
 
 
 # Add in the future?
-# Define the URL of the data source
-# url = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/F-F_Research_Data_5_Factors_2x3_CSV.zip"
-# # Download the zip file and extract the csv file
-# r = requests.get(url)
-# with open("F-F_Research_Data_5_Factors_2x3_CSV.zip", "wb") as f:
-#     f.write(r.content)
+# Define the URL of the data source, download the zip file and extract the csv file
+#url = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/F-F_Research_Data_5_Factors_2x3_CSV.zip"
+#r = requests.get(url)
+#with open("F-F_Research_Data_5_Factors_2x3_CSV.zip", "wb") as f:
+#    f.write(r.content)
 
 def yf_update(fname, latest_tickers, OVERWRITE=False):
     with open(fname+".pickle","rb") as f:
@@ -126,9 +125,14 @@ def main(argv=None):
     data_db_root = args.db
     
     spdrdatfile = "spdrfactors"
-    mainrtns = 'sprtns_current'
-    mainsect = 'sp500sectors_current'
+    #mainrtns = 'sprtns_current'
+    mainrtns = 'sprtns'
+    #mainsect = 'sp500sectors_current'
+    mainsect = 'spsect'
+    sp500sect =  'sp500_history' # update sectors in new format
 
+    #=================================================================
+    # 1: Update mainrtns (individual stock returns)
     sp_raw_df = save_sp500_tickers("https://stockanalysis.com/list/sp-500-stocks/", "stockData")
     sp_df = (
         sp_raw_df
@@ -145,7 +149,40 @@ def main(argv=None):
     sp_tickers = sp_df.index.tolist()
     fdatin = yf_update(os.path.join(data_db_root, mainrtns), sp_tickers, True) 
 
-    # Lets add in sector and industry
+    #=================================================================
+    # 2a: Update mainsect for anything newly added in mainrtns (sectors stay frozen)
+    all_tickers = fdatin.columns.tolist()
+    with open(os.path.join(data_db_root, mainsect)+".pickle","rb") as f:
+        spsect = pickle.load(f)
+    # get all_tickers that are not in spsect index
+    missing_tickers = [tik for tik in all_tickers if tik not in spsect.index]
+    print("Getting sector and industry info from Yahoo Finance...this may take a while...")
+    sector_list=[]
+    industry_list=[]
+    for tik in missing_tickers:
+        #get ticker from yf.Ticker and handle errors to keep loop going
+        try:
+            ticker=yf.Ticker(tik)
+            #get both sector and industry info on ticker
+            sector=ticker.info['sector']
+            sector_list.append(sector)
+            industry=ticker.info['industry']
+            industry_list.append(industry)
+        except:
+            sector_list.append('N/A')
+            industry_list.append('N/A')
+            continue
+    print("Done!")
+    spsect_update = pd.DataFrame(
+        list(zip(missing_tickers, sector_list, industry_list)),
+        columns=['Ticker', 'Sector', 'Industry']
+    ).set_index('Ticker')
+    spsect = pd.concat([spsect, spsect_update], axis=0).sort_index()
+    with open(os.path.join(data_db_root, "spsect")+".pickle","wb") as f:
+        pickle.dump(spsect,f)
+
+    #=================================================================
+    # 2: Update sp500sect (sector and industry, as of today)
     print("Getting sector and industry info from Yahoo Finance...this may take a while...")
     sector_list=[]
     industry_list=[]
@@ -166,6 +203,7 @@ def main(argv=None):
             industry_list.append('N/A')
             mcap_list.append('N/A')
             continue
+    print("Done!")
     spdf2 = (
         pd.DataFrame(
             list(zip(sp_tickers,sector_list,industry_list,mcap_list)), 
@@ -177,17 +215,17 @@ def main(argv=None):
         .pipe(lambda x: sp_df.merge(x, left_index=True, right_index=True, how='left'))
         .pipe(yf_sector_clean)
     )
-
-    with open(os.path.join(data_db_root, "sp500_history")+".pickle","rb") as f:
+    with open(os.path.join(data_db_root, sp500sect)+".pickle","rb") as f:
         sp500_dict = pickle.load(f)
     today_date = datetime.today().strftime('%Y-%m-%d')
     if today_date not in sp500_dict:
         sp500_dict[today_date] = spdf2
-    with open(os.path.join(data_db_root, "sp500_history")+".pickle","wb") as f:
+    with open(os.path.join(data_db_root, sp500sect)+".pickle","wb") as f:
         pickle.dump(sp500_dict,f)
 
-
-    factorinfo = pd.read_excel(os.path.join(data_db_root, "spdr_data.xlsx"), skiprows=1)
+    #=================================================================
+    # 3: Update spdrfactors (SPDR sector ETFs)
+    factorinfo = pd.read_excel(os.path.join(data_db_root, "spdr_data.xlsx"), skiprows=1) #reload each time to check for any added ETFs
     factorinfo = factorinfo.dropna(subset=['Ticker'])
     factor_tickers = factorinfo['Ticker'].tolist()
     fsdatin = yf_update(os.path.join(data_db_root, spdrdatfile), factor_tickers,True)
