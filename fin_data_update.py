@@ -119,7 +119,7 @@ def save_sp500_tickers(ticker_location, table_name):
         return df
     
 def main(argv=None):
-    parser = argparse.ArgumentParser(description='Read in key data and update, mostly from yahhoo finance')
+    parser = argparse.ArgumentParser(description='Read in key data and update, mostly from yahoo finance')
     parser.add_argument('--db', '-d', help='Path to data', default='C:\\Users\\gcubb\\OneDrive\\Python\\data-hub')
     args = parser.parse_args(argv)
     data_db_root = args.db
