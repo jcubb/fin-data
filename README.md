@@ -55,7 +55,9 @@ The script will:
 - `sprtns.pickle`: all the historical individual equity returns
 - `spsect.pickle`: all the individual equity sectors/industries, frozen when first found
 - `sp500_history.pickle`: dictionary of SP500 snapshots, with sector, industry, weight
-**HOWEVER** now the code will create them if they are not already present
+
+- **HOWEVER** now the code will create them if they are not already present
+
 - Generated pickle files store historical data and are saved to the configured data directory
 
 ## Configuration
