@@ -25,43 +25,63 @@ python fin_data_update.py --db $env:DB
 #    f.write(r.content)
 
 def yf_update(fname, latest_tickers, OVERWRITE=False):
-    with open(fname+".pickle","rb") as f:
-        fdat = pickle.load(f)
-    # Drop duplicate columns by name
-    fdat = fdat.loc[:, ~fdat.columns.duplicated()]
-    history_begin_date = fdat.index[0]
-    startupdate  = fdat.index[-1]
-    endupdate    = (datetime.today() - timedelta(days=1)).strftime("%Y-%m-%d")
-    #dead_tickers = fdat.columns[fdat.tail(20).isna().all()]
-    #tickers_list = list(fdat.columns[~fdat.columns.isin(dead_tickers)])
-    tickers_list = list(fdat.columns)
+    pickle_file = fname + ".pickle"
+    try:
+        with open(pickle_file, "rb") as f:
+            fdat = pickle.load(f)
+        # Drop duplicate columns by name
+        fdat = fdat.loc[:, ~fdat.columns.duplicated()]
+        history_begin_date = fdat.index[0]
+        startupdate = fdat.index[-1]
+        tickers_list = list(fdat.columns)
+    except FileNotFoundError:
+        print(f"Pickle file {pickle_file} not found. Creating new dataset...")
+        fdat = pd.DataFrame()
+        history_begin_date = "2000-01-03"  # Adjust as needed
+        startupdate = history_begin_date
+        tickers_list = []
+    
+    endupdate = (datetime.today() - timedelta(days=1)).strftime("%Y-%m-%d")
     new_tickers = [tik for tik in latest_tickers if tik not in tickers_list]
-    existing_tickers_update = (
-        yf.download(tickers_list,startupdate,endupdate, keepna=True, auto_adjust=True)['Close']
-        .pct_change(fill_method=None).mul(100)
-        .dropna(how='all')
-        .assign(index=lambda x: pd.to_datetime(x.index, format="%Y%m%d"))
-        .set_index('index')
-        .pipe(lambda x: pd.concat([fdat, x], axis=0))
-    )
-    if not new_tickers:
-        full_data = existing_tickers_update.sort_index(axis=0).sort_index(axis=1)
-    else:
-        new_tickers_update = (
-            yf.download(new_tickers,history_begin_date,endupdate, auto_adjust=True)['Close']
+    # Download all data if starting fresh, otherwise update existing
+    if fdat.empty:
+        full_data = (
+            yf.download(latest_tickers, history_begin_date, endupdate, auto_adjust=True)['Close']
             .pct_change(fill_method=None).mul(100)
             .dropna(how='all')
             .assign(index=lambda x: pd.to_datetime(x.index, format="%Y%m%d"))
             .set_index('index')
+            .sort_index(axis=0).sort_index(axis=1)
         )
-        full_data = (
-            pd.concat([existing_tickers_update, new_tickers_update], axis=1)
-            .sort_index(axis=0)
-            .sort_index(axis=1)
+    else:
+        # Your existing logic here...
+        existing_tickers_update = (
+            yf.download(tickers_list, startupdate, endupdate, keepna=True, auto_adjust=True)['Close']
+            .pct_change(fill_method=None).mul(100)
+            .dropna(how='all')
+            .assign(index=lambda x: pd.to_datetime(x.index, format="%Y%m%d"))
+            .set_index('index')
+            .pipe(lambda x: pd.concat([fdat, x], axis=0))
         )
+        
+        if not new_tickers:
+            full_data = existing_tickers_update.sort_index(axis=0).sort_index(axis=1)
+        else:
+            new_tickers_update = (
+                yf.download(new_tickers, history_begin_date, endupdate, auto_adjust=True)['Close']
+                .pct_change(fill_method=None).mul(100)
+                .dropna(how='all')
+                .assign(index=lambda x: pd.to_datetime(x.index, format="%Y%m%d"))
+                .set_index('index')
+            )
+            full_data = (
+                pd.concat([existing_tickers_update, new_tickers_update], axis=1)
+                .sort_index(axis=0)
+                .sort_index(axis=1)
+            )
     if OVERWRITE:
-        with open(fname+".pickle","wb") as f:
-            pickle.dump(full_data,f)
+        with open(pickle_file, "wb") as f:
+            pickle.dump(full_data, f)
     return full_data
 
 
@@ -152,10 +172,17 @@ def main(argv=None):
     #=================================================================
     # 2a: Update mainsect for anything newly added in mainrtns (sectors stay frozen)
     all_tickers = fdatin.columns.tolist()
-    with open(os.path.join(data_db_root, mainsect)+".pickle","rb") as f:
-        spsect = pickle.load(f)
-    # get all_tickers that are not in spsect index
-    missing_tickers = [tik for tik in all_tickers if tik not in spsect.index]
+    try:
+        with open(os.path.join(data_db_root, mainsect)+".pickle","rb") as f:
+            spsect = pickle.load(f)
+        # get all_tickers that are not in spsect index
+        missing_tickers = [tik for tik in all_tickers if tik not in spsect.index]
+    except FileNotFoundError:
+        print(f"Pickle file {mainsect}.pickle not found. Creating new sector dataset...")
+        spsect = pd.DataFrame(columns=['Sector', 'Industry'])
+        spsect.index.name = 'Ticker'
+        # If starting fresh, all tickers are missing
+        missing_tickers = all_tickers
     print("Getting sector and industry info from Yahoo Finance...this may take a while...")
     sector_list=[]
     industry_list=[]
@@ -216,8 +243,13 @@ def main(argv=None):
         .pipe(lambda x: sp_df.merge(x, left_index=True, right_index=True, how='left'))
         .pipe(yf_sector_clean)
     )
-    with open(os.path.join(data_db_root, sp500sect)+".pickle","rb") as f:
-        sp500_dict = pickle.load(f)
+    try:
+        with open(os.path.join(data_db_root, sp500sect)+".pickle","rb") as f:
+            sp500_dict = pickle.load(f)
+    except FileNotFoundError:
+        print(f"Pickle file {sp500sect}.pickle not found. Creating new history dictionary...")
+        sp500_dict = {}
+
     today_date = datetime.today().strftime('%Y-%m-%d')
     if today_date not in sp500_dict:
         sp500_dict[today_date] = spdf2

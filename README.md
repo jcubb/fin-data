@@ -49,11 +49,13 @@ The script will:
 
 - `etf_tickers.csv`: List of ETF tickers for analysis
 - `spdr_data.xlsx`: SPDR ETF information and metadata
-- Expect all of the following to be present in `data_db_root`. Review code to see how to create initial file if needed
+- 
+- Expect all of the following to be present in `data_db_root`. 
 - `spdrfactors.pickle`: all the Historical SPDR ETF returns
 - `sprtns.pickle`: all the historical individual equity returns
 - `spsect.pickle`: all the individual equity sectors/industries, frozen when first found
 - `sp500_history.pickle`: dictionary of SP500 snapshots, with sector, industry, weight
+**HOWEVER** now the code will create them if they are not already present
 - Generated pickle files store historical data and are saved to the configured data directory
 
 ## Configuration
