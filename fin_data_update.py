@@ -96,6 +96,23 @@ def yf_sector_clean(yinfo):
     yinfo['Sector'] = yinfo['Sector'].replace(sector_mapping)
     return yinfo
 
+def parse_market_cap(cap_str):
+    """Parse market cap strings like '4.41T', '123.45B', '1.23M' to billions"""
+    if pd.isna(cap_str) or cap_str == 'N/A':
+        return 0
+    cap_str = str(cap_str).replace(',', '').strip()
+    if cap_str.endswith('T'):
+        return float(cap_str[:-1]) * 1000  # Convert trillions to billions
+    elif cap_str.endswith('B'):
+        return float(cap_str[:-1])  # Already in billions
+    elif cap_str.endswith('M'):
+        return float(cap_str[:-1]) / 1000  # Convert millions to billions
+    else:
+        # Assume it's already a number in billions
+        try:
+            return float(cap_str)
+        except ValueError:
+            return 0
 
 def save_sp500_tickers(ticker_location, table_name):
     #headers = {'User-Agent': 'Mozilla/5.0'}
@@ -158,7 +175,8 @@ def main(argv=None):
         sp_raw_df
         .copy()
         .assign(
-            Market_Cap_bn=lambda x: x['Market Cap'].astype(str).str.replace(',', '').str.rstrip('B').astype(float),
+            #Market_Cap_bn=lambda x: x['Market Cap'].astype(str).str.replace(',', '').str.rstrip('B').astype(float),
+            Market_Cap_bn=lambda x: x['Market Cap'].apply(parse_market_cap),
             sp500_weight=lambda x: x['Market_Cap_bn'] / x['Market_Cap_bn'].sum()
         )
         .drop(columns=['Market Cap'])
@@ -183,7 +201,7 @@ def main(argv=None):
         spsect.index.name = 'Ticker'
         # If starting fresh, all tickers are missing
         missing_tickers = all_tickers
-    print("Getting sector and industry info from Yahoo Finance...this may take a while...")
+    print("Getting sector and industry info from Yahoo Finance...probably quick...")
     sector_list=[]
     industry_list=[]
     for tik in missing_tickers:
