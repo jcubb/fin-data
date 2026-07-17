@@ -286,7 +286,16 @@ def main(argv=None):
 
     #=================================================================
     # 3: Update spdrfactors (SPDR sector ETFs)
-    factorinfo = pd.read_excel(os.path.join(data_db_root, "spdr_data.xlsx"), skiprows=1) #reload each time to check for any added ETFs
+    # Prefer a spdr_data.xlsx the user maintains in the data dir; on a fresh
+    # setup that file won't be there yet, so fall back to the copy bundled in
+    # this repo (same folder as this script) so the pipeline runs out of the box.
+    spdr_xlsx = os.path.join(data_db_root, "spdr_data.xlsx")
+    if not os.path.exists(spdr_xlsx):
+        repo_xlsx = os.path.join(os.path.dirname(os.path.abspath(__file__)), "spdr_data.xlsx")
+        if os.path.exists(repo_xlsx):
+            print(f"spdr_data.xlsx not in data dir; using bundled repo copy: {repo_xlsx}")
+            spdr_xlsx = repo_xlsx
+    factorinfo = pd.read_excel(spdr_xlsx, skiprows=1) #reload each time to check for any added ETFs
     factorinfo = factorinfo.dropna(subset=['Ticker'])
     factor_tickers = factorinfo['Ticker'].tolist()
     factor_tickers = factor_tickers + [t for t in EXTRA_FX_TICKERS if t not in factor_tickers]
