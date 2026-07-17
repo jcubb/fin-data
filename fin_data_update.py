@@ -9,6 +9,16 @@ import argparse
 import requests
 import pickle
 
+import rates_data  # sibling module: daily interest-rate LEVELS (separate pickle)
+
+# Non-SPDR tickers pulled alongside the SPDR set into spdrfactors: FX majors +
+# the ICE dollar index. Kept here in code (not in the vendor spdr_data.xlsx
+# export) so refreshing that export can't silently drop them.
+EXTRA_FX_TICKERS = [
+    "EURUSD=X", "USDJPY=X", "GBPUSD=X", "USDCHF=X", "USDCAD=X",
+    "AUDUSD=X", "USDCNY=X", "USDMXN=X", "DX-Y.NYB",
+]
+
 """
 sample command line call:
 $env:DB = 'C:\\Users\\gcubb\\OneDrive\\Python\\data-hub'
@@ -41,7 +51,7 @@ def yf_update(fname, latest_tickers, OVERWRITE=False):
         startupdate = history_begin_date
         tickers_list = []
     
-    endupdate = (datetime.today() - timedelta(days=1)).strftime("%Y-%m-%d")
+    endupdate = datetime.today().strftime("%Y-%m-%d")
     new_tickers = [tik for tik in latest_tickers if tik not in tickers_list]
     # Download all data if starting fresh, otherwise update existing
     if fdat.empty:
@@ -279,7 +289,19 @@ def main(argv=None):
     factorinfo = pd.read_excel(os.path.join(data_db_root, "spdr_data.xlsx"), skiprows=1) #reload each time to check for any added ETFs
     factorinfo = factorinfo.dropna(subset=['Ticker'])
     factor_tickers = factorinfo['Ticker'].tolist()
+    factor_tickers = factor_tickers + [t for t in EXTRA_FX_TICKERS if t not in factor_tickers]
     fsdatin = yf_update(os.path.join(data_db_root, spdrdatfile), factor_tickers,True)
+
+    #=================================================================
+    # 4: Update rates_levels (interest-rate LEVELS; separate data model — see
+    # rates_data.py). Non-fatal: a rates source outage must not break the
+    # equity/returns update above.
+    try:
+        rd = rates_data.rates_update(data_db_root)
+        print(f"rates_levels updated: {rd.shape[0]} rows x {rd.shape[1]} cols, "
+              f"through {rd.index[-1].date()}")
+    except Exception as e:
+        print(f"rates_levels update FAILED (non-fatal): {e!r}")
 
 
 if __name__ == '__main__':
