@@ -14,9 +14,12 @@ import rates_data  # sibling module: daily interest-rate LEVELS (separate pickle
 # Non-SPDR tickers pulled alongside the SPDR set into spdrfactors: FX majors +
 # the ICE dollar index. Kept here in code (not in the vendor spdr_data.xlsx
 # export) so refreshing that export can't silently drop them.
+# All pairs are USD-base (USD/XXX = units of XXX per 1 USD), so a positive daily
+# return uniformly means the US dollar strengthened vs that currency. DX-Y.NYB
+# (DXY) is the broad dollar index with the same sign convention.
 EXTRA_FX_TICKERS = [
-    "EURUSD=X", "USDJPY=X", "GBPUSD=X", "USDCHF=X", "USDCAD=X",
-    "AUDUSD=X", "USDCNY=X", "USDMXN=X", "DX-Y.NYB",
+    "USDEUR=X", "USDJPY=X", "USDGBP=X", "USDCHF=X", "USDCAD=X",
+    "USDAUD=X", "USDCNY=X", "USDMXN=X", "DX-Y.NYB",
 ]
 
 """
