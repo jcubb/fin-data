@@ -38,6 +38,26 @@ python fin_data_update.py --db $env:DB
 #with open("F-F_Research_Data_5_Factors_2x3_CSV.zip", "wb") as f:
 #    f.write(r.content)
 
+def _gap_robust_returns(close):
+    """Daily % returns measured from each column's own last valid price.
+
+    yf.download aligns every ticker on the UNION of their calendars, so a
+    ticker that doesn't trade on a day others do gets a NaN price on that row.
+    A plain .pct_change() then differences across that NaN and NaN-poisons the
+    NEXT real observation too. The prime offender is DX-Y.NYB (ICE dollar
+    index), which is closed on US market holidays while the FX spot pairs keep
+    trading — so every first-US-trading-day-after-a-holiday DXY return came out
+    NaN. Computing pct_change per column on that column's own non-null prices
+    measures the move from the last day the ticker actually traded, so calendar
+    gaps no longer manufacture NaNs. Rows that are all-NaN afterwards (e.g. a
+    genuine market holiday) are still dropped downstream via dropna(how='all').
+    """
+    if isinstance(close, pd.Series):
+        return close.dropna().pct_change().reindex(close.index).mul(100)
+    return (close.apply(lambda c: c.dropna().pct_change())
+                 .reindex(close.index).mul(100))
+
+
 def yf_update(fname, latest_tickers, OVERWRITE=False):
     pickle_file = fname + ".pickle"
     try:
@@ -60,8 +80,8 @@ def yf_update(fname, latest_tickers, OVERWRITE=False):
     # Download all data if starting fresh, otherwise update existing
     if fdat.empty:
         full_data = (
-            yf.download(latest_tickers, history_begin_date, endupdate, auto_adjust=True)['Close']
-            .pct_change(fill_method=None).mul(100)
+            _gap_robust_returns(
+                yf.download(latest_tickers, history_begin_date, endupdate, auto_adjust=True)['Close'])
             .dropna(how='all')
             .assign(index=lambda x: pd.to_datetime(x.index, format="%Y%m%d"))
             .set_index('index')
@@ -70,8 +90,8 @@ def yf_update(fname, latest_tickers, OVERWRITE=False):
     else:
         # Your existing logic here...
         existing_tickers_update = (
-            yf.download(tickers_list, startupdate, endupdate, keepna=True, auto_adjust=True)['Close']
-            .pct_change(fill_method=None).mul(100)
+            _gap_robust_returns(
+                yf.download(tickers_list, startupdate, endupdate, keepna=True, auto_adjust=True)['Close'])
             .dropna(how='all')
             .assign(index=lambda x: pd.to_datetime(x.index, format="%Y%m%d"))
             .set_index('index')
@@ -82,8 +102,8 @@ def yf_update(fname, latest_tickers, OVERWRITE=False):
             full_data = existing_tickers_update.sort_index(axis=0).sort_index(axis=1)
         else:
             new_tickers_update = (
-                yf.download(new_tickers, history_begin_date, endupdate, auto_adjust=True)['Close']
-                .pct_change(fill_method=None).mul(100)
+                _gap_robust_returns(
+                    yf.download(new_tickers, history_begin_date, endupdate, auto_adjust=True)['Close'])
                 .dropna(how='all')
                 .assign(index=lambda x: pd.to_datetime(x.index, format="%Y%m%d"))
                 .set_index('index')
