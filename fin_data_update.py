@@ -11,16 +11,18 @@ import pickle
 
 import rates_data  # sibling module: daily interest-rate LEVELS (separate pickle)
 
-# Non-SPDR tickers pulled alongside the SPDR set into spdrfactors: FX majors +
-# the ICE dollar index. Kept here in code (not in the vendor spdr_data.xlsx
-# export) so refreshing that export can't silently drop them.
+# Non-SPDR tickers pulled alongside the SPDR set into spdrfactors: FX majors,
+# the ICE dollar index, and WTI crude oil. Kept here in code (not in the vendor
+# spdr_data.xlsx export) so refreshing that export can't silently drop them.
 # Each pair is the foreign currency measured in USD (XXXUSD), so a positive daily
 # return means that currency strengthened vs the US dollar (e.g. JPYUSD up = yen
 # stronger, USD weaker). DX-Y.NYB (DXY) is the broad dollar index and is the one
 # exception: DXY up = USD stronger, i.e. it moves opposite the pairs.
+# CL=F is WTI crude front-month futures (an oil-*price* series, unlike the XOP/
+# XLE oil-equity ETFs in the SPDR set); positive return = oil price up.
 EXTRA_FX_TICKERS = [
     "EURUSD=X", "JPYUSD=X", "GBPUSD=X", "CHFUSD=X", "CADUSD=X",
-    "AUDUSD=X", "CNYUSD=X", "MXNUSD=X", "DX-Y.NYB",
+    "AUDUSD=X", "CNYUSD=X", "MXNUSD=X", "DX-Y.NYB", "CL=F",
 ]
 
 """
