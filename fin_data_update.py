@@ -25,6 +25,19 @@ EXTRA_FX_TICKERS = [
     "AUDUSD=X", "CNYUSD=X", "MXNUSD=X", "DX-Y.NYB", "CL=F",
 ]
 
+# Raw current-snapshot fundamentals harvested from the .info dict the section-2
+# loop already fetches (zero extra API calls). Stored RAW as extra columns on the
+# sp500_history snapshots; they feed size/value/profitability exposures for the
+# Barra-style factor model. Normalization (winsorize + cap-weighted z-score) is a
+# downstream step, NOT done here — see factor_panel_spec.md. marketCap itself is
+# already captured separately as marketCap_yf, so it's not repeated here.
+SNAPSHOT_FUNDAMENTALS = [
+    "sharesOutstanding", "bookValue", "priceToBook",
+    "priceToSalesTrailing12Months", "trailingPE",
+    "returnOnEquity", "returnOnAssets", "operatingMargins",
+    "grossMargins", "profitMargins", "grossProfits", "totalRevenue",
+]
+
 """
 sample command line call:
 $env:DB = 'C:\\Users\\gcubb\\OneDrive\\Python\\data-hub'
@@ -265,31 +278,35 @@ def main(argv=None):
 
     #=================================================================
     # 2: Update sp500sect (sector and industry, as of today)
+    # Also harvests the raw current-snapshot fundamentals in SNAPSHOT_FUNDAMENTALS
+    # from the SAME .info dict this loop already fetches (zero extra API calls) —
+    # the forward-accumulation arm of the factor-model exposure panel. These are
+    # stored RAW; centering/winsorizing/z-scoring happens later (see
+    # factor_panel_spec.md), never here. The three existing keys keep their exact
+    # all-or-nothing semantics: any of sector/industry/marketCap missing -> the
+    # whole row is N/A, just as before.
     print("Getting sector and industry info from Yahoo Finance...this may take a while...")
-    sector_list=[]
-    industry_list=[]
-    mcap_list=[]
+    records = []
     for tik in sp_tickers:
         #get ticker from yf.Ticker and handle errors to keep loop going
         try:
-            ticker=yf.Ticker(tik)
-            #get both sector and industry info on ticker
-            sector=ticker.info['sector']
-            sector_list.append(sector)
-            industry=ticker.info['industry']
-            industry_list.append(industry)
-            mcap=ticker.info['marketCap']
-            mcap_list.append(mcap)
-        except:
-            sector_list.append('N/A')
-            industry_list.append('N/A')
-            mcap_list.append('N/A')
-            continue
+            info = yf.Ticker(tik).info
+            rec = {
+                'Ticker': tik,
+                'Sector': info['sector'],        # KeyError -> except (unchanged)
+                'Industry': info['industry'],
+                'marketCap_yf': info['marketCap'],
+            }
+            for f in SNAPSHOT_FUNDAMENTALS:
+                rec[f] = info.get(f, float('nan'))
+        except Exception:
+            rec = {'Ticker': tik, 'Sector': 'N/A', 'Industry': 'N/A',
+                   'marketCap_yf': 'N/A',
+                   **{f: float('nan') for f in SNAPSHOT_FUNDAMENTALS}}
+        records.append(rec)
     print("Done!")
     spdf2 = (
-        pd.DataFrame(
-            list(zip(sp_tickers,sector_list,industry_list,mcap_list)), 
-            columns=['Ticker','Sector','Industry','marketCap_yf'])
+        pd.DataFrame.from_records(records)
         .assign(marketCap_yf=lambda x: x['marketCap_yf'].replace('N/A',0),
                 sp500_weight_yf=lambda x: x['marketCap_yf']/x['marketCap_yf'].sum()
         )

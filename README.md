@@ -67,6 +67,38 @@ Update the `data_db_root` variable in the script to point to your desired data s
 data_db_root = 'C:\\Users\\gcubb\\OneDrive\\Python\\data-hub'
 ```
 
+## Factor Model Data Pipeline
+
+Layered on top of the core updater is a pipeline that produces a **regression-ready
+monthly panel of standardized style exposures** (size / value / profitability) for a
+Barra-style cross-sectional factor model. fin-data's job ends at the *data*; the
+model itself (industry dummies, WLS regression, factor returns, covariance matrix)
+lives in a **separate downstream project**.
+
+**Stages** (all additive — existing data and functionality untouched):
+
+1. **Forward arm** — `fin_data_update.py` §2 loop also harvests raw current-snapshot
+   fundamentals (`SNAPSHOT_FUNDAMENTALS`) into the `sp500_history` snapshots, at zero
+   extra API cost.
+2. **Backfill arm** — `char_panel.py` → `char_panel_raw.pickle`: point-in-time monthly
+   raw characteristics from ~4 yrs of annual statements (split-safe market cap, book
+   equity, assets, net/operating income, gross profit), 90-day reporting lag.
+3. **Exposures** — `char_exposures.py` → **`factor_panel.pickle`**: the deliverable —
+   `ret_m`, standardized `exp_size_eom` / `exp_value_eom` / `exp_prof_eom`, plus all
+   raw components and labels carried through.
+
+**Start here for the downstream project:**
+- `factor_panel_spec.md` — the hand-off **contract** (schema, timing convention,
+  what's in/out of scope).
+- `exposure_construction.md` — **how and why** the `exp_*_eom` are built (rationale,
+  edge cases, the two-part timing lag, and a reconciliation checklist). Read this
+  before consuming the exposures.
+
+Key gotcha: the timing is left **agnostic** — exposures are as-of the label date and
+`ret_m` is the trailing-month return, so a same-date join is look-ahead. The
+downstream model must lag exposures one period (`ret_m[t] ~ exp[t-1]`); use the
+`lag_exposures()` helper in `char_exposures.py`.
+
 ## Contributing
 
 1. Fork the repository
