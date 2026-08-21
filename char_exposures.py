@@ -92,6 +92,18 @@ def monthly_returns(db):
     return s.dropna()
 
 
+def daily_returns(db):
+    """Daily % returns from sprtns (wide date x ticker) -> long Series indexed
+    (date, ticker). NaNs (non-trading / not-yet-in-universe / delisted) dropped."""
+    with open(os.path.join(db, "sprtns.pickle"), "rb") as f:
+        s = pickle.load(f)
+    s = s.sort_index()
+    s.index.name = "date"
+    r = s.stack(future_stack=True).rename("ret_d")
+    r.index = r.index.set_names(["date", "ticker"])
+    return r.dropna()
+
+
 def lag_exposures(panel, exp_cols=EXP_COLS):
     """SHIPPED, NOT APPLIED. Return a copy in which the exposures are shifted to the
     prior month-end within each ticker, so a row's ret_m[t] lines up with exposures
@@ -128,6 +140,86 @@ def build_factor_panel(db, lower=WINSOR_LOWER, upper=WINSOR_UPPER):
     return panel
 
 
+DAILY_KEEP = EXP_COLS + ["marketCap", "sector", "industry"]
+
+
+def build_factor_panel_daily(db, lower=WINSOR_LOWER, upper=WINSOR_UPPER):
+    """DAILY deliverable for the Barra-style model: one row per (date, ticker),
+    with the daily return and the month-M-end exposure snapshot held FIXED across
+    every trading day of month M+1 (the "beginning-of-month" specification).
+
+    Timing is look-ahead-free BY CONSTRUCTION and needs NO further lag: the
+    exposure as-of month-end M is known at M's close and explains only returns on
+    days strictly after M (all of month M+1). The M-close price sits in both the
+    exposure (marketCap / B-M denominator) and the first day's return denominator,
+    but that price is a KNOWN, past quantity at estimation time — the returns being
+    explained (the numerators, M+1 onward) never touch the exposure. Contrast the
+    monthly panel, where ret_m[t]'s endpoint coincided with the exposure date and a
+    t-1 shift was required.
+
+    Built by broadcasting the existing monthly exposures — no exposures are
+    recomputed. Each daily date d is mapped to snap(d) = the latest month-end
+    strictly before d (merge_asof, backward, exact matches disallowed), then joined
+    to that snapshot's exposures/cap/labels. `exp_asof_date` records snap(d).
+    """
+    with open(os.path.join(db, "char_panel_raw.pickle"), "rb") as f:
+        raw = pickle.load(f)
+    panel_m = build_exposures(raw, lower=lower, upper=upper)   # (month_end_date, ticker)
+
+    ret = daily_returns(db)                                    # (date, ticker) ret_d
+    daily_dates = ret.index.get_level_values("date").unique().sort_values()
+    month_ends = panel_m.index.get_level_values("month_end_date").unique().sort_values()
+
+    # snap(d) = last month-end strictly before d (holds M-end exposures over M+1)
+    snap = pd.merge_asof(
+        pd.DataFrame({"date": daily_dates}),
+        pd.DataFrame({"month_end_date": month_ends, "snap": month_ends}),
+        left_on="date", right_on="month_end_date",
+        direction="backward", allow_exact_matches=False,
+    ).set_index("date")["snap"]
+
+    df = ret.reset_index()
+    df["snap"] = df["date"].map(snap)
+    df = df.dropna(subset=["snap"])                            # drop days before first snapshot
+
+    expo = (panel_m[DAILY_KEEP].reset_index()
+            .rename(columns={"month_end_date": "snap"}))
+    out = (df.merge(expo, on=["snap", "ticker"], how="inner")  # inner: name must be in snapshot
+             .rename(columns={"snap": "exp_asof_date"})
+             .set_index(["date", "ticker"]).sort_index())
+
+    front = ["ret_d"] + EXP_COLS + ["marketCap", "sector", "industry", "exp_asof_date"]
+    out = out[[c for c in front if c in out.columns]]
+
+    out.attrs["timing"] = (
+        "BEGINNING-OF-MONTH / daily: exposures are the month-M-end snapshot held "
+        "FIXED across every trading day of month M+1; ret_d is the daily return. "
+        "Look-ahead-free by construction (exposure date < every return it explains) "
+        "-- do NOT apply an additional lag. exp_asof_date = the snapshot month-end.")
+    out.attrs["standardization"] = (
+        f"per-month cross-section (at each snapshot month-end): winsorize raw at "
+        f"[{lower},{upper}] -> cap-weighted demean (weights=marketCap) -> divide by "
+        f"equal-weighted cross-sectional SD -> NaN->0. size=ln(marketCap). Exposures "
+        f"are then held fixed across the following month's trading days.")
+    return out
+
+
+def report_daily(panel):
+    dates = panel.index.get_level_values(0)
+    print("\n" + "=" * 64)
+    print("FACTOR PANEL (DAILY) — beginning-of-month deliverable")
+    print("=" * 64)
+    print(f"rows: {len(panel)} | tickers: {panel.index.get_level_values(1).nunique()} "
+          f"| trading days: {dates.nunique()} | span {dates.min().date()} -> {dates.max().date()}")
+    snaps = panel["exp_asof_date"].nunique()
+    med = int(panel.groupby(level=0).size().median())
+    print(f"exposure snapshots used: {snaps} | median names/day: {med}")
+    print(f"ret_d non-null: {100*panel['ret_d'].notna().mean():.1f}%")
+    print("\nattrs:")
+    for k, v in panel.attrs.items():
+        print(f"  [{k}] {v}")
+
+
 def report(panel):
     dates = panel.index.get_level_values(0)
     print("\n" + "=" * 64)
@@ -156,14 +248,24 @@ def main(argv=None):
     ap.add_argument("--lower", type=float, default=WINSOR_LOWER)
     ap.add_argument("--upper", type=float, default=WINSOR_UPPER)
     ap.add_argument("--out", default=None)
+    ap.add_argument("--daily", action="store_true",
+                    help="build the daily (beginning-of-month) panel -> factor_panel_daily.pickle")
     args = ap.parse_args(argv)
 
-    panel = build_factor_panel(args.db, lower=args.lower, upper=args.upper)
-    out = args.out or os.path.join(args.db, "factor_panel.pickle")
-    with open(out, "wb") as f:
-        pickle.dump(panel, f)
-    report(panel)
-    print(f"\nWrote factor panel -> {out}")
+    if args.daily:
+        panel = build_factor_panel_daily(args.db, lower=args.lower, upper=args.upper)
+        out = args.out or os.path.join(args.db, "factor_panel_daily.pickle")
+        with open(out, "wb") as f:
+            pickle.dump(panel, f)
+        report_daily(panel)
+        print(f"\nWrote daily factor panel -> {out}")
+    else:
+        panel = build_factor_panel(args.db, lower=args.lower, upper=args.upper)
+        out = args.out or os.path.join(args.db, "factor_panel.pickle")
+        with open(out, "wb") as f:
+            pickle.dump(panel, f)
+        report(panel)
+        print(f"\nWrote factor panel -> {out}")
 
 
 if __name__ == "__main__":
