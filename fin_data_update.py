@@ -38,6 +38,23 @@ SNAPSHOT_FUNDAMENTALS = [
     "grossMargins", "profitMargins", "grossProfits", "totalRevenue",
 ]
 
+# --------------------------------------------------------------------------- #
+# Incremental-update safety. See yf_update for the bug these fix.              #
+# --------------------------------------------------------------------------- #
+# How far back to re-fetch on every run. Must be > 1 trading day: the first row
+# of any re-fetch window is always dropped (pct_change has no predecessor inside
+# the window), so a 0-day overlap means the newest stored row can never be
+# corrected. 15 calendar days is ~10 trading days of self-healing.
+REFETCH_BUFFER_DAYS = 15
+
+# A row is written only if its cross-section reaches this fraction of the
+# trailing median. Runs that fire while the US session is open capture only what
+# has printed so far; those partial rows used to be frozen into the history
+# permanently. Observed bad rows ran 41%-76% of normal, normal rows sit within a
+# few names of each other, so 0.80 separates them with wide margins on both sides.
+MIN_ROW_COVERAGE = 0.80
+COVERAGE_WINDOW = 60
+
 """
 sample command line call:
 $env:DB = 'C:\\Users\\gcubb\\OneDrive\\Python\\data-hub'
@@ -73,6 +90,40 @@ def _gap_robust_returns(close):
                  .reindex(close.index).mul(100))
 
 
+def drop_undercovered_rows(df, min_coverage=MIN_ROW_COVERAGE,
+                           window=COVERAGE_WINDOW, label=""):
+    """Drop rows whose cross-section is far below the recent norm.
+
+    Two distinct kinds of junk row, one test. A run that fires while the US
+    session is open writes a row holding only what had printed by then; a run on
+    a US market holiday writes a row holding only the foreign listings (.TO, .L,
+    .V) that traded, since yf.download aligns everything on the UNION of exchange
+    calendars and so invents rows for days the US market was shut.
+
+    Both show up the same way -- a cross-section far below the surrounding days --
+    so one coverage test removes both, and no market-calendar dependency is
+    needed to identify the holidays.
+
+    The reference is a TRAILING median, not a lifetime one: the column count grows
+    as tickers are added, so a fixed threshold would delete legitimate early
+    history. A median also shrugs off the runs of two consecutive bad days seen in
+    this data, where a trailing mean would be dragged down by them.
+    """
+    if df.empty:
+        return df
+    counts = df.notna().sum(axis=1)
+    ref = counts.rolling(window, min_periods=5).median()
+    keep = ~((counts < min_coverage * ref) & ref.notna())
+    dropped = df.index[~keep]
+    if len(dropped):
+        print(f"  {label}dropping {len(dropped)} under-covered row(s) "
+              f"(<{min_coverage:.0%} of the trailing {window}-row median):")
+        for d in dropped:
+            print(f"     {str(d)[:10]}  {int(counts[d]):4d} names "
+                  f"vs trailing median {int(ref[d])}")
+    return df.loc[keep]
+
+
 def yf_update(fname, latest_tickers, OVERWRITE=False):
     pickle_file = fname + ".pickle"
     try:
@@ -80,8 +131,17 @@ def yf_update(fname, latest_tickers, OVERWRITE=False):
             fdat = pickle.load(f)
         # Drop duplicate columns by name
         fdat = fdat.loc[:, ~fdat.columns.duplicated()]
+        # ...and by row. Nothing used to dedup the index, and the concat below
+        # can only add to it.
+        fdat = fdat.loc[~fdat.index.duplicated(keep="last")].sort_index()
         history_begin_date = fdat.index[0]
-        startupdate = fdat.index[-1]
+        # Re-fetch a buffer, not just the last stored day. With startupdate =
+        # fdat.index[-1] the re-fetch window's first row was the ONLY row a later
+        # run could have repaired -- and it is exactly the row _gap_robust_returns
+        # NaNs out (no predecessor in-window) and dropna(how='all') then discards.
+        # So any row written incomplete stayed incomplete forever. That is what
+        # froze 12 partial cross-sections into the history through 2026-08.
+        startupdate = fdat.index[-1] - timedelta(days=REFETCH_BUFFER_DAYS)
         tickers_list = list(fdat.columns)
     except FileNotFoundError:
         print(f"Pickle file {pickle_file} not found. Creating new dataset...")
@@ -110,9 +170,17 @@ def yf_update(fname, latest_tickers, OVERWRITE=False):
             .dropna(how='all')
             .assign(index=lambda x: pd.to_datetime(x.index, format="%Y%m%d"))
             .set_index('index')
-            .pipe(lambda x: pd.concat([fdat, x], axis=0))
+            # combine_first, not concat. concat appended a SECOND copy of every
+            # overlapping date and let whichever sorted first win; the re-fetched
+            # values could never replace a stored row. combine_first takes the
+            # fresh value wherever the re-fetch has one and falls back to the
+            # stored value where it does not -- so a partial row self-heals on the
+            # next run, while a ticker that has since delisted (ANSS, acquired by
+            # Synopsys) keeps its real history instead of being overwritten with
+            # the NaNs yfinance now returns for it.
+            .pipe(lambda x: x.combine_first(fdat))
         )
-        
+
         if not new_tickers:
             full_data = existing_tickers_update.sort_index(axis=0).sort_index(axis=1)
         else:
@@ -128,6 +196,7 @@ def yf_update(fname, latest_tickers, OVERWRITE=False):
                 .sort_index(axis=0)
                 .sort_index(axis=1)
             )
+    full_data = drop_undercovered_rows(full_data, label=f"{os.path.basename(fname)}: ")
     if OVERWRITE:
         with open(pickle_file, "wb") as f:
             pickle.dump(full_data, f)
